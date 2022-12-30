@@ -24,7 +24,7 @@ struct player_input_t {
 struct player_movement_start_t {
 	vector2_t velocity;
 	vector2_t location;
-	uint64_t timestamp; // duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+	uint64_t timestamp;
 };
 
 struct player_movement_t {
