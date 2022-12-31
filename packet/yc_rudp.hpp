@@ -84,8 +84,12 @@ namespace yc_rudp {
             }
             
             loss_packets[c] = false;
-            
+
+#if _MSVC_LANG < 202004L
+            bool is_loss = std::ranges::find(loss_packets, true) != loss_packets.end();
+#else
             bool is_loss = std::ranges::contains(loss_packets, true);
+#endif 
 
             if(lidx == c && !is_loss) {
                 std::vector<packet_raw*> r = {};
