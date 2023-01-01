@@ -40,9 +40,9 @@ struct apacket_##name { \
 constexpr const static int __packet__id = __COUNTER__ - (__counter + 1); \
 constexpr const static bool is_apacket = true; \
 field \
-static void bind(std::function<void(packet_##name, size_t)> f) { \
-packet_events[packet_##name::__packet__id] = [f](void* data, packet_size_type size, size_t client_id) { \
-f(*((packet_##name*)data), client_id); \
+static void bind(std::function<void(apacket_##name, size_t)> f) { \
+packet_events[apacket_##name::__packet__id] = [f](void* data, packet_size_type size, size_t client_id) { \
+f(*((apacket_##name*)data), client_id); \
 }; \
 } \
 };
@@ -54,9 +54,9 @@ constexpr const static bool is_apacket = true; \
 packet_size_type size;\
 type value \
 constexpr const static int type_size = sizeof(type); \
-static void bind(std::function<void(packet_var_##name, size_t)> f) { \
-packet_events[packet_var_##name::__packet__id] = [f](void* data, packet_size_type size, size_t client_id) { \
-packet_var_##name data_;\
+static void bind(std::function<void(apacket_var_##name, size_t)> f) { \
+packet_events[apacket_var_##name::__packet__id] = [f](void* data, packet_size_type size, size_t client_id) { \
+apacket_var_##name data_;\
 memcpy(&data_, data, size); \
 f(data_, client_id); \
 }; \
