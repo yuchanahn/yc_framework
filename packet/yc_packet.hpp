@@ -8,6 +8,7 @@ using packet_size_type = int16_t;
 constexpr int __counter = __COUNTER__;
 constexpr int __packets_max__ = 1000;
 constexpr int ACK_COUNTER_MAX = 64; // 2^6
+constexpr int PACKET_SIZE_MAX = 1024; // 2^10
 
 #define PACKET(name, field) \
 struct packet_##name { \
@@ -107,30 +108,30 @@ namespace yc_pack {
 		char* body;
 	};
 
-	constexpr const int HEADER_SIZE = sizeof(packet_size_type) + sizeof(packet_id_type);
+	constexpr int HEADER_SIZE = sizeof(packet_size_type) + sizeof(packet_id_type);
 
 	template <is_packet_tpye T>
 	static raw_packet pack(T& packet_data) {
 		return raw_packet{
 			.size = sizeof(T) + HEADER_SIZE,
-			.id = (packet_id_type)T::__packet__id,
-			.body = ((char*)&packet_data)
+			.id = static_cast<packet_id_type>(T::__packet__id),
+			.body = static_cast<char*>(&packet_data)
 		};
 	}
 
 	template <is_packet_var_tpye T>
 	static raw_packet pack(T& packet_data) {
 		return raw_packet{
-			.size = packet_size_type((packet_data.size * packet_data.type_size) + HEADER_SIZE + sizeof(packet_size_type)),
-			.id = (packet_id_type)T::__packet__id,
-			.body = ((char*)&packet_data)
+			.size = static_cast<packet_size_type>(packet_data.size * packet_data.type_size + HEADER_SIZE + sizeof(packet_size_type)),
+			.id = static_cast<packet_id_type>(T::__packet__id),
+			.body = static_cast<char*>(&packet_data)
 		};
 	}
 
 	static raw_packet unpack(char* byte_code) {
 		return raw_packet{
-			.size = *((packet_size_type*)byte_code),
-			.id = *((packet_id_type*)(byte_code + sizeof(packet_size_type))),
+			.size = *reinterpret_cast<packet_size_type*>(byte_code),
+			.id = *reinterpret_cast<packet_id_type*>(byte_code + sizeof(packet_size_type)),
 			.body = byte_code + HEADER_SIZE
 		};
 	}

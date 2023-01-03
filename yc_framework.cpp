@@ -1,116 +1,114 @@
 #include "packet/yc_rudp.hpp"
 #include "packet/yc_packet.hpp"
+#include "thread_pool.hpp"
 
 #include <functional>
 #include <ranges>
 #include <atomic>
 
-namespace yc {
-
-    struct task_data_t {
-        std::thread thread;
-        std::atomic_bool stop;
-        std::function<void()> func;
-        int id;
-    };
-    std::vector<task_data_t*> yc_tasks;
-
-    class task {
-    public:
-        int id = -1;
-        std::function<void()> body;
-        task(std::function<void()> body_) : body(body_) {
-            if(yc_tasks.empty()) {
-                auto data = new task_data_t;
-                data->stop = false;
-                data->thread = std::thread([data] {
-                    while(!data->stop) {
-                        data->func();
-                    }
-                });
-                yc_tasks.push_back(data);
-                data->id = yc_tasks.size() - 1;
-                id = data->id;
-            } else {
-                for(const auto& i : yc_tasks | std::views::filter([](task_data_t* x) { return x->stop.load(); })
-                                             | std::views::take(1)) {
-                    i->func = body;
-                    id = i->id;
-                    i->stop = false;
-                }
-            }
-        }
-        ~task() {
-            yc_tasks[id]->stop = true;
-        }
-    };
+namespace yc
+{
     
 }
 
 int main(int argc, char* argv[]) {
-    auto sendto = [](char* buf, int len) {
-        if(len == 1) printf("send ack!\n");
-        else         printf("sendto : %s[%d]\n", buf + 1, len);
-        return true;
-    };
-    auto send_suceess = [](int seq) {
-        printf("send suceess : %d\n", seq);
-    };
+    constexpr int io_thread_count = 4;
     
-    yc_rudp::rudp_packet_sender sender(sendto, send_suceess, [](int64_t rtt){ printf("is timeout [rtt : %lld]", rtt);});
-    yc_rudp::rudp_packet_receiver receiver(
-    [&sender](int x) {
-        sender.send_ack_packet(x);
-    }, [&sender](int x) {
-        printf("get ack packet!!! %d\n", sender.get_return_ack(x));
-    });
-    /*
-    std::string spacket = "packet_test";
-    sender.send_packet(spacket.c_str(), spacket.length() + 1, true);
+    yc_rudp::rudp_buffer_t rudp(io_thread_count);
+    std::vector<yc_rudp::receive_packet_raw> no_ack_packets;
 
-    auto get_ack_f = [&](int c) {
-        yc_pack::udp::convert_ack tack_0(c);
-        tack_0.is_ack_packet = true;
-        auto p = tack_0.to_ack();
-        receiver.packet_read(reinterpret_cast<const char*>(&p), 1);
+    char buf[512] {};
+    auto push = [&](int seq, std::string data, int thread_id) {
+        yc_pack::udp::convert_ack ack;
+        ack.use_ack = true;
+        ack.counter = seq;
+        ack.is_ack_packet = false;
+    
+        buf[0] = ack.to_ack();
+        std::copy_n(data.c_str(), data.length(), buf + 1);
+        push_packet(rudp.pkt_buffer, thread_id % io_thread_count, io_thread_count, buf, data.length()+1);
     };
 
-    std::thread t([&] {
-        std::this_thread::sleep_for(std::chrono::milliseconds(222));
-        get_ack_f(0);
-    });
 
-    */
-    //while(true) {
-    //    sender.resend_run();
-    //    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    //}
-
-    auto read_packet_f = [&](int c) {
-        yc_pack::udp::convert_ack tack_0(c);
-        tack_0.is_ack_packet = false;
-        tack_0.counter = c;
-        char buf[5];
-        buf[0] = tack_0.to_ack();
-
-        // print bit
-        for(int i = 0; i < 8; ++i) {
-            printf("%d", (buf[0] >> (7 - i)) & 1);
+    auto get_read_range_for_buffer = std::bind_front(
+        yc_rudp::get_read_range,
+        std::ref(rudp.pkt_buffer),
+        std::ref(rudp.receive_buffer)
+        );
+    int m_seq = -1;
+    
+    for(int i = 0; i < 22; ++i) {
+        push(m_seq, std::format("[1]number : {}", m_seq), rand() % io_thread_count);
+        m_seq = yc_rudp::get_next_seq(m_seq);
+    }
+    int end = 0;
+    {
+        auto[s, e] = get_read_range_for_buffer(no_ack_packets, io_thread_count, end);
+    
+        for(;s < e; ++s) {
+            printf("%s\n", rudp.receive_buffer[yc_rudp::make_seq(s)].data);
         }
-        printf("\n");
+        end = yc_rudp::make_seq(e);
+    }
+    for(int i = 0; i < 40; ++i) {
+        push(m_seq, std::format("[2]number : {}", m_seq), rand() % io_thread_count);
+        m_seq = yc_rudp::get_next_seq(m_seq);
+    }
+    {
+        auto[s, e] = get_read_range_for_buffer(no_ack_packets, io_thread_count, end);
         
-        std::copy_n(std::format("C:{}", c).c_str(), 4, &buf[1]);
-        for(auto& i : receiver.packet_read(buf, 5)) printf("read packet : %s\n", i->buf);
+        for(;s < e; ++s) {
+            printf("%s\n", rudp.receive_buffer[yc_rudp::make_seq(s)].data);
+        }
+        end = yc_rudp::make_seq(e);
+        
+    }
+
+    for(int i = 0; i < 36; ++i) {
+        push(m_seq, std::format("[3]number : {}", m_seq), rand() % io_thread_count);
+        m_seq = yc_rudp::get_next_seq(m_seq);
+    }
+    
+    {
+        auto[s, e] = get_read_range_for_buffer(no_ack_packets, io_thread_count, end);
+        for(;s < e; ++s) {
+            printf("%s\n", rudp.receive_buffer[yc_rudp::make_seq(s)].data);
+        }
+        end = yc_rudp::make_seq(e);
+    }
+    int rtt = 100;
+    int seq = -1;
+
+    test_thread_pool pool(10);
+    auto send_test = [&](int s, int ms, bool use_ack = true) {
+        const std::string str = "hello" + std::to_string(s);
+        std::copy_n(str.c_str(), str.length(), buf);
+        ready_to_send(rudp.send_buffer, buf, str.length(), use_ack, s);
+
+        if(use_ack) {
+            pool.enqueue_job([&rtt, &rudp, &seq, s, ms] {
+                std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+                seq = set_send_complete(rudp.send_buffer, rtt, s);
+                printf(" # send complete %d\n", seq);
+            });
+        }
     };
     
-    read_packet_f(0);
-    read_packet_f(2);
-    read_packet_f(1);
-    read_packet_f(5);
-    read_packet_f(4);
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    read_packet_f(3);
+    send_test(0, 10);
+    send_test(1, 30);
+    send_test(2, 50);
+    send_test(3, 350);
+    send_test(4, 151);
+    send_test(5, 2350, false);
     
-    std::this_thread::sleep_for(std::chrono::milliseconds(100000));
+    while(true) {
+        auto r = get_resend_packets(rudp.send_buffer, rtt, 1000);
+        for(auto& i : r) {
+            printf("resend_data : %s\n", rudp.send_buffer[i].data + 1);
+        }
+        if(r.size()) printf("rtt [%d], size vector : %lld\n", rtt, r.size());
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    pool.wait_all();
     return 0;
 }
