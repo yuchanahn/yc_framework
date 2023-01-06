@@ -253,7 +253,7 @@ namespace yc_rudp
             if (const auto t = get_timestamp(); pkt.timestamp + rtt < t) {
                 ret.push_back(i);
                 pkt.is_resend_packet = true;
-                pkt.timestamp = t;
+                //pkt.timestamp = t;
                 rtt = static_cast<int>(rtt * 1.5f);
                 if (rtt > timeout) {
                     pkt.is_used = false;
