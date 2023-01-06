@@ -64,7 +64,7 @@ public:
         }
     }
 
-    void enqueue_job(std::function<void()> job) {
+    void add_task(std::function<void()> job) {
         if (this->end_threads) {
             throw std::runtime_error("ThreadPool is ended");
         }

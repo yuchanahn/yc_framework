@@ -1,15 +1,7 @@
 #include "packet/yc_rudp.hpp"
-#include "packet/yc_packet.hpp"
 #include "thread_pool.hpp"
-
-#include <functional>
-#include <ranges>
-#include <atomic>
-
-namespace yc
-{
-    
-}
+#include "test_module/yc_test.hpp"
+#include "thread/nto_memory.hpp"
 
 int main(int argc, char* argv[]) {
     constexpr int io_thread_count = 4;
@@ -28,8 +20,6 @@ int main(int argc, char* argv[]) {
         std::copy_n(data.c_str(), data.length(), buf + 1);
         push_packet(rudp.pkt_buffer, thread_id % io_thread_count, io_thread_count, buf, data.length()+1);
     };
-
-
     auto get_read_range_for_buffer = std::bind_front(
         yc_rudp::get_read_range,
         std::ref(rudp.pkt_buffer),
@@ -39,6 +29,7 @@ int main(int argc, char* argv[]) {
     
     for(int i = 0; i < 22; ++i) {
         push(m_seq, std::format("[1]number : {}", m_seq), rand() % io_thread_count);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
         m_seq = yc_rudp::get_next_seq(m_seq);
     }
     int end = 0;
@@ -86,7 +77,7 @@ int main(int argc, char* argv[]) {
         ready_to_send(rudp.send_buffer, buf, str.length(), use_ack, s);
 
         if(use_ack) {
-            pool.enqueue_job([&rtt, &rudp, &seq, s, ms] {
+            pool.add_task([&rtt, &rudp, &seq, s, ms] {
                 std::this_thread::sleep_for(std::chrono::milliseconds(ms));
                 seq = set_send_complete(rudp.send_buffer, rtt, s);
                 printf(" # send complete %d\n", seq);
@@ -100,6 +91,7 @@ int main(int argc, char* argv[]) {
     send_test(3, 350);
     send_test(4, 151);
     send_test(5, 2350, false);
+    send_test(5, 1001);
     
     while(true) {
         auto r = get_resend_packets(rudp.send_buffer, rtt, 1000);
