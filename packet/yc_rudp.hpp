@@ -233,7 +233,7 @@ namespace yc_rudp
     }
 
     /**
-     * \brief 재전송이 필요한 패킷을 찾습니다.
+     * \brief 재전송이 필요한 패킷을 찾습니다. rtt의 최소값은 10입니다.
      * \param send_buf [OUT] resend가 필요한지 검사하는 버퍼
      * \param rtt [OUT] new rtt, timeout이 발생했을 경우 -1
      * \param timeout timeout을 발생 시킬 최소값 (ms)
@@ -255,6 +255,7 @@ namespace yc_rudp
                 pkt.is_resend_packet = true;
                 //pkt.timestamp = t;
                 rtt = static_cast<int>(rtt * 1.5f);
+                rtt = std::max(rtt, 10);
                 if (rtt > timeout) {
                     pkt.is_used = false;
                     rtt = -1;

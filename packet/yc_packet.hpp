@@ -115,7 +115,7 @@ namespace yc_pack {
 		return raw_packet{
 			.size = sizeof(T) + HEADER_SIZE,
 			.id = static_cast<packet_id_type>(T::__packet__id),
-			.body = static_cast<char*>(&packet_data)
+			.body = reinterpret_cast<char*>(&packet_data)
 		};
 	}
 
@@ -124,7 +124,7 @@ namespace yc_pack {
 		return raw_packet{
 			.size = static_cast<packet_size_type>(packet_data.size * packet_data.type_size + HEADER_SIZE + sizeof(packet_size_type)),
 			.id = static_cast<packet_id_type>(T::__packet__id),
-			.body = static_cast<char*>(&packet_data)
+			.body = reinterpret_cast<char*>(&packet_data)
 		};
 	}
 
