@@ -1,3 +1,4 @@
+// ReSharper disable CppClangTidyCppcoreguidelinesSpecialMemberFunctions
 #pragma once
 #include <optional>
 #include <string>
@@ -28,7 +29,7 @@ concept Container = requires(ContainerType a, const ContainerType b)
 
 namespace yc {
 	template <typename T>
-	struct err_opt_t : public std::optional<T> {
+	struct err_opt_t : std::optional<T> {
 		std::string err;
 		
 		err_opt_t() {}
@@ -36,10 +37,10 @@ namespace yc {
 		explicit err_opt_t(T&& value) { *static_cast<std::optional<T>*>(this) = std::move(value); }
 		err_opt_t(err_opt_t<T>& other) { operator=(other); }
 		err_opt_t(err_opt_t<T>&& other) noexcept { operator=(other); }
-		
-		err_opt_t(const char* e) { err = e;}
-		err_opt_t(const std::string e) { err = e; }
-		err_opt_t(const std::string&& e) { err = e; }
+
+		explicit err_opt_t(const char* e) { err = e;}
+		explicit err_opt_t(const std::string e) { err = e; }
+		explicit err_opt_t(const std::string&& e) { err = e; }
 		err_opt_t& operator= (const std::string&& e) { err = e; return *this; }
 		err_opt_t& operator= (const char* e) { err = e; return *this; }
 		
@@ -71,6 +72,5 @@ namespace yc {
 			if (this->has_value()) return function();
 			return err;
 		}
-
 	};
 }

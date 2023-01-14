@@ -110,6 +110,20 @@ namespace yc_pack {
 
 	constexpr int HEADER_SIZE = sizeof(packet_size_type) + sizeof(packet_id_type);
 
+	// ReSharper disable once IdentifierTypo
+	inline bool pkt_vrfct(char* pkt, const size_t len) {
+		udp::convert_ack ack;
+		ack.load(*pkt);
+		if(ack.is_ack_packet && len == 1) return true;
+		if (len < HEADER_SIZE) return false;
+		const packet_size_type size = *reinterpret_cast<packet_size_type*>(pkt+1);
+		const packet_id_type id = *reinterpret_cast<packet_id_type*>(pkt + 1 + sizeof(packet_size_type));
+		if(id < 0 || id >= __packets_max__) return false;
+		if(size < 0 || size > PACKET_SIZE_MAX) return false;
+		if (len != static_cast<size_t>(size)) return false;
+		return true;
+	}
+
 	template <is_packet_tpye T>
 	static raw_packet pack(T& packet_data) {
 		return raw_packet{
@@ -135,6 +149,4 @@ namespace yc_pack {
 			.body = byte_code + HEADER_SIZE
 		};
 	}
-	
-	
 }

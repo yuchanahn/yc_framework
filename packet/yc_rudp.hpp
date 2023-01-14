@@ -1,11 +1,9 @@
-﻿#pragma once
+﻿// ReSharper disable IdentifierTypo
+// ReSharper disable CppClangTidyBugproneImplicitWideningOfMultiplicationResult
+#pragma once
 #include <algorithm>
 #include <vector>
-#include <functional>
-#include <variant>
 #include <chrono>
-
-#include <mutex>
 
 #include "yc_packet.hpp"
 
@@ -20,18 +18,16 @@ namespace yc_rudp
         char data[PACKET_SIZE_MAX] {};
         packet_size_type len {};
     };
-
     struct send_packet_raw : packet_raw {
         int64_t timestamp{};
         bool is_resend_packet{};
     };
-
     struct rudp_buffer_t {
         std::vector<packet_raw> pkt_buffer;
         std::vector<receive_packet_raw> receive_buffer;
         std::vector<send_packet_raw> send_buffer;
-        
-        rudp_buffer_t(const int io_thread_count)
+
+        explicit rudp_buffer_t(const int io_thread_count)
                         : pkt_buffer(ACK_COUNTER_MAX * io_thread_count * 2)
                         , receive_buffer(ACK_COUNTER_MAX * io_thread_count * 2)
                         , send_buffer(ACK_COUNTER_MAX + 1) {
@@ -42,8 +38,6 @@ namespace yc_rudp
         return std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
     }
-
-    
     
     // 받아야할 패킷 번호 보다 뒷 번호 인지 확인 하는 함수.
     inline bool is_later_seq(int seq1, int seq2) {
@@ -51,25 +45,21 @@ namespace yc_rudp
         seq2 += seq2 < ACK_COUNTER_MAX / 2 ? ACK_COUNTER_MAX : 0;
         return seq1 > seq2;
     }
-
     //패킷에서 seq를 뽑아내는 함수
     inline int get_seq(const char* buf) {
         yc_pack::udp::convert_ack ack;
         ack.load(*buf);
         return ack.use_ack ? ack.counter : -1;
     }
-    
     //ack처리용 패킷인지를 확인 하는 함수
     inline bool is_ack_packet(const char* buf) {
         yc_pack::udp::convert_ack ack;
         ack.load(*buf);
         return ack.is_ack_packet;
     }
-
     inline int get_next_seq(const int seq) {
         return (seq + 1) % ACK_COUNTER_MAX;
     }
-
     inline int make_seq(const int seq) {
         return seq % ACK_COUNTER_MAX;
     }
@@ -237,7 +227,6 @@ namespace yc_rudp
      * \param send_buf [OUT] resend가 필요한지 검사하는 버퍼
      * \param rtt [OUT] new rtt, timeout이 발생했을 경우 -1
      * \param timeout timeout을 발생 시킬 최소값 (ms)
-     * \param seq 최신의 seq
      * \return resend가 필요한 패킷의 seq, 없을 경우 0
      */
     inline std::vector<int> get_resend_packets(
@@ -246,16 +235,14 @@ namespace yc_rudp
         const int timeout
         ) {
         std::vector<int> ret;
-        
         for (int i = 0; i < ACK_COUNTER_MAX; ++i) {
             auto& pkt = send_buf[i];
             if (!pkt.is_used) continue;
             if (const auto t = get_timestamp(); pkt.timestamp + rtt < t) {
                 ret.push_back(i);
                 pkt.is_resend_packet = true;
-                //pkt.timestamp = t;
-                rtt = static_cast<int>(rtt * 1.5f);
-                rtt = std::max(rtt, 10);
+                rtt = static_cast<int>(static_cast<float>(rtt) * 1.5f);
+                rtt = rtt > 10 ? rtt : 10;
                 if (rtt > timeout) {
                     pkt.is_used = false;
                     rtt = -1;

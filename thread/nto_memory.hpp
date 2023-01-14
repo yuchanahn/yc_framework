@@ -14,8 +14,8 @@ concept nto_type = requires {
  * \brief threads... <-> one thread only (main_thread?)
  * 다수의 스레드와 하나의 스레드가 lock free 하게 객체를 관리 할 수 있는 클래스입니다.
  * 예상하는 대로 동작하였을 경우. thread safe 함을 확인 ^^.
- * [*** 주의 ***] object를 read하는 thread는 한개여야 합니다.
- * [*** 주의 ***] object를 write하는 thread는 여러개 일 수 있습니다.
+ * [*** 중요! ***] object를 read하는 thread는 한개여야 합니다.
+ * [*** 중요! ***] object를 write하는 thread는 여러개 일 수 있습니다.
  * \tparam Type Type of thread safe object
  * \tparam ThreadCount Number of threads, default is 1
  * \tparam Max Maximum number of threads, default is 1
@@ -88,8 +88,6 @@ public:
 
 /* example
  ===============================
-
- 
 struct user_info {
     int id;
     int endpoint;
@@ -110,5 +108,5 @@ int main(int argc, char* argv[]) {
         mem.read_end(i);
     }
 }
-    ===============================
-    */
+===============================
+*/
