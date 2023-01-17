@@ -120,7 +120,7 @@ namespace yc_pack {
 		const packet_id_type id = *reinterpret_cast<packet_id_type*>(pkt + 1 + sizeof(packet_size_type));
 		if(id < 0 || id >= __packets_max__) return false;
 		if(size < 0 || size > PACKET_SIZE_MAX) return false;
-		if (len != static_cast<size_t>(size)) return false;
+		if (len != static_cast<size_t>(size) + 1) return false;
 		return true;
 	}
 

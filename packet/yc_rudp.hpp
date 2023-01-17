@@ -32,6 +32,19 @@ namespace yc_rudp
                         , receive_buffer(ACK_COUNTER_MAX * io_thread_count * 2)
                         , send_buffer(ACK_COUNTER_MAX + 1) {
         }
+
+        void clear() {
+            for (auto &pkt : pkt_buffer) {
+                pkt.is_used = false;
+            }
+            for (auto &pkt : receive_buffer) {
+                pkt.len = 0;
+            }
+            for (auto &pkt : send_buffer) {
+                pkt.is_used = false;
+                pkt.is_resend_packet = false;
+            }
+        }
     };
     
     [[nodiscard]] inline int64_t get_timestamp() {
@@ -85,8 +98,6 @@ namespace yc_rudp
         const char* buf,
         const size_t len
         ) {
-        // 만약 ack 패킷이라면 ack 완료 통지.
-        // 함수 바깥에서 처리해줘야 한다.
         const auto seq = get_seq(buf);
         int idx = -1;
         if(seq == -1) {
@@ -102,7 +113,6 @@ namespace yc_rudp
         }
         auto& [data, pkt_len, is_used] = pkt_buf[idx];
 
-        //이미 사용중인 패킷이면 실패
         if(is_used) return -1;
 
         std::copy_n(buf + 1, len - 1, data);
@@ -183,6 +193,7 @@ namespace yc_rudp
      */
     inline int ready_to_send(
         std::vector<send_packet_raw>& send_buf,
+        std::vector<int>& resend_idx_buf,
         char* buf,
         const int len,
         const bool use_ack,
@@ -200,7 +211,7 @@ namespace yc_rudp
         send_buf[s].timestamp = get_timestamp();
         send_buf[s].len = static_cast<packet_size_type>(len + 1);
         send_buf[s].is_used = use_ack;
-        
+        if(use_ack) resend_idx_buf.push_back(s);
         return s;
     }
 
@@ -213,11 +224,14 @@ namespace yc_rudp
      */
     inline int set_send_complete(
         std::vector<send_packet_raw>& send_buf,
+        std::vector<int>& resend_idx_buf,
         int& rtt,
         const int seq
         ) {
         if(!send_buf[seq].is_used) return -1;
-        
+        const auto& it = std::find(resend_idx_buf.begin(), resend_idx_buf.end(), seq);
+        if(it != resend_idx_buf.end())
+            resend_idx_buf.erase(it);
         send_buf[seq].is_used = false;
         return seq;
     }
@@ -231,15 +245,15 @@ namespace yc_rudp
      */
     inline std::vector<int> get_resend_packets(
         std::vector<send_packet_raw>& send_buf,
+        std::vector<int>& resend_idx_buf,
         int& rtt,
         const int timeout
         ) {
-        std::vector<int> ret;
-        for (int i = 0; i < ACK_COUNTER_MAX; ++i) {
+        std::vector<int> result;
+        for(const int& i : resend_idx_buf) {
             auto& pkt = send_buf[i];
-            if (!pkt.is_used) continue;
             if (const auto t = get_timestamp(); pkt.timestamp + rtt < t) {
-                ret.push_back(i);
+                result.push_back(i);
                 pkt.is_resend_packet = true;
                 rtt = static_cast<int>(static_cast<float>(rtt) * 1.5f);
                 rtt = rtt > 10 ? rtt : 10;
@@ -250,6 +264,7 @@ namespace yc_rudp
                 }
             }
         }
-        return ret;
+
+        return result;
     }
 }
