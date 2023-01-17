@@ -4,6 +4,7 @@
 using packet_ack_type = int8_t;
 using packet_id_type = int8_t;
 using packet_size_type = int16_t;
+using packet_session_id_type = int64_t;
 
 constexpr int __counter = __COUNTER__;
 constexpr int __packets_max__ = 1000;
@@ -24,6 +25,7 @@ f(*((packet_##name*)data), client_id); \
 #define PACKET_VAR(name, type, value) \
 struct packet_var_##name { \
 constexpr const static int __packet__id = __COUNTER__ - (__counter + 1); \
+packet_session_id_type session_id;\
 packet_size_type size;\
 type value \
 constexpr const static int type_size = sizeof(type); \
@@ -52,6 +54,7 @@ f(*((apacket_##name*)data), client_id); \
 struct apacket_var_##name { \
 constexpr const static int __packet__id = __COUNTER__ - (__counter + 1); \
 constexpr const static bool is_apacket = true; \
+packet_session_id_type session_id;\
 packet_size_type size;\
 type value \
 constexpr const static int type_size = sizeof(type); \
@@ -136,7 +139,7 @@ namespace yc_pack {
 	template <is_packet_var_tpye T>
 	static raw_packet pack(T& packet_data) {
 		return raw_packet{
-			.size = static_cast<packet_size_type>(packet_data.size * packet_data.type_size + HEADER_SIZE + sizeof(packet_size_type)),
+			.size = static_cast<packet_size_type>(packet_data.size * packet_data.type_size + HEADER_SIZE + sizeof(packet_size_type) + sizeof(packet_session_id_type)),
 			.id = static_cast<packet_id_type>(T::__packet__id),
 			.body = reinterpret_cast<char*>(&packet_data)
 		};
