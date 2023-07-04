@@ -15,11 +15,25 @@ namespace yc_physics
 
 	template <typename Vector> concept upper_case_vec = requires { Vector::X; Vector::Y; Vector::Z; };
 	template <typename Vector> concept lower_case_vec = requires { Vector::x; Vector::y; Vector::z; };
-	template <typename Quaternion> concept upper_case_quat = requires { Quaternion::X; Quaternion::Y; Quaternion::Z; Quaternion::W; };
-	template <typename Quaternion> concept lower_case_quat = requires { Quaternion::x; Quaternion::y; Quaternion::z; Quaternion::w; };
-	
-	template<class... Ts> struct loaded : Ts... { using Ts::operator()...; };
-	template<class... Ts> loaded(Ts...)->loaded<Ts...>;
+	template <typename Quaternion> concept upper_case_quat = requires {
+		Quaternion::X; Quaternion::Y; Quaternion::Z; Quaternion::W;
+	};
+	template <typename Quaternion> concept lower_case_quat = requires {
+		Quaternion::x; Quaternion::y; Quaternion::z; Quaternion::w;
+	};
+
+	template <class... Ts>
+	struct loaded : Ts... {
+		using Ts::operator()...;
+	};
+
+	template <class... Ts>
+	loaded(Ts...) -> loaded<Ts...>;
+
+	struct sphere_t {
+		double radius;
+		sphere_t(double r) : radius(r) {}
+	};
 
 	struct capsule_t {
 		double half_height;
@@ -27,9 +41,12 @@ namespace yc_physics
 		capsule_t(const double half_height, const double radius) : half_height(half_height), radius(radius) { }
 	};
 
-	using shape_t = std::variant<capsule_t>;
-	inline shape_t make_capsule(const double half_height, const double radius) { return shape_t(capsule_t(half_height, radius)); }
-	
+	using shape_t = std::variant<capsule_t, sphere_t>;
+
+	inline shape_t make_capsule(const double half_height, const double radius) {
+		return shape_t(capsule_t(half_height, radius));
+	}
+
 	struct terrain_t {
 		struct cell_t {
 			vec3_t root_pos;
@@ -145,9 +162,11 @@ namespace yc_physics
 			while (std::ranges::count(mark, false)) {
 				for (size_t i = 0; i < cells.size(); i++) {
 					if (!mark[i]) {
-						int x = i % (width - 1);  // NOLINT(bugprone-narrowing-conversions, cppcoreguidelines-narrowing-conversions)
-						int y = i / (width - 1);  // NOLINT(bugprone-narrowing-conversions, cppcoreguidelines-narrowing-conversions, clang-diagnostic-shorten-64-to-32)
-						int w = x; 
+						int x = i % (width - 1);
+						// NOLINT(bugprone-narrowing-conversions, cppcoreguidelines-narrowing-conversions)
+						int y = i / (width - 1);
+						// NOLINT(bugprone-narrowing-conversions, cppcoreguidelines-narrowing-conversions, clang-diagnostic-shorten-64-to-32)
+						int w = x;
 						int h = y;
 
 						bool f = true;
@@ -227,7 +246,8 @@ namespace yc_physics
 		}
 
 		//쌍선형 보간.
-		static double get_interpolated_height(double h_left_up, double h_right_up, double h_left_down, double h_right_down,
+		static double get_interpolated_height(double h_left_up, double h_right_up, double h_left_down,
+		                                      double h_right_down,
 		                                      double u, double v) {
 			double h_up = h_left_up + (h_right_up - h_left_up) * u;
 			double h_down = h_left_down + (h_right_down - h_left_down) * u;
@@ -261,13 +281,15 @@ namespace yc_physics
 	};
 
 	struct rigid_body_t {
-		shape_t target;
-		vec3_t pos {};
-		qut_t rot {};
-		vec3_t vel {};
+		shape_t target = capsule_t(0, 0);
+		vec3_t pos{};
+		qut_t rot{};
+		vec3_t scale{};
+		vec3_t vel{};
+
 		bool use_physic_simulate = false;
 	};
-	
+
 	inline bool col(const capsule_t& a, const capsule_t& b) {
 		/*
 		const vec3_t a_pos = a.get_pos();
@@ -296,8 +318,7 @@ namespace yc_physics
 		const capsule_t& capsule,
 		const vec3_t& in_pos,
 		const qut_t& in_rot,
-		const terrain_t& terrain)
-	{
+		const terrain_t& terrain) {
 		std::vector<vec3_t> cells;
 		const vec3_t pos = in_pos - terrain.root_pos;
 		if (pos.x < 0 ||
@@ -333,13 +354,13 @@ namespace yc_physics
 			closest_point.y > max(triangle.a.y, max(triangle.b.y, triangle.c.y)) ||
 			closest_point.z < min(triangle.a.z, min(triangle.b.z, triangle.c.z)) ||
 			closest_point.z > max(triangle.a.z, max(triangle.b.z, triangle.c.z))) {
-				const double da = distance(midpoint, triangle.a);
-				const double db = distance(midpoint, triangle.b);
-				const double dc = distance(midpoint, triangle.c);
-				if (da <= db && da <= dc) closest_point = triangle.a;
-				else if (db <= da && db <= dc) closest_point = triangle.b;
-				else closest_point = triangle.c;
-			}
+			const double da = distance(midpoint, triangle.a);
+			const double db = distance(midpoint, triangle.b);
+			const double dc = distance(midpoint, triangle.c);
+			if (da <= db && da <= dc) closest_point = triangle.a;
+			else if (db <= da && db <= dc) closest_point = triangle.b;
+			else closest_point = triangle.c;
+		}
 		vec3_t cp_line = line.start + dot(closest_point - line.start, line.end - line.start) / dot(
 			line.end - line.start, line.end - line.start) * (line.end - line.start);
 		if (dot(cp_line - line.start, line.end - line.start) < 0) cp_line = line.start;
@@ -347,90 +368,220 @@ namespace yc_physics
 
 		if (dot(cross(cp_line - triangle.a, norm), norm) > 0 &&
 			dot(cross(cp_line - triangle.b, norm), norm) > 0 &&
-			dot(cross(cp_line - triangle.c, norm), norm) > 0) {
-			
-			return {closest_point, cp_line};
-		} 
+			dot(cross(cp_line - triangle.c, norm), norm) > 0) { return {closest_point, cp_line}; }
 		return {closest_point, cp_line};
 	}
+	struct hit_data_t {
+		vec3_t penetration_normal;
+		double penetration_depth;
+	};
+	inline vec3_t closest_point_on_line_segment(line_segment_t& line, vec3_t point) {
+		const vec3_t ab = line.end - line.start;
+		float t = dot(point - line.start, ab) / dot(ab, ab);
+		return line.start + saturate(t) * ab;
+	}
+	inline std::optional<hit_data_t> col_sphere_n_triangle(const vec3_t& sphere_pos, const triangle_t& triangle, double radius) {
+		vec3_t p0 = triangle.a, p1 = triangle.b, p2 = triangle.c;
+		vec3_t center = sphere_pos;
+		vec3_t N = normalize(cross(p1 - p0, p2 - p0));
+		double dist = dot(center - p0, N);
 
-	inline std::vector<vec3_t> col(
+		if (dist < -radius || dist > radius) { return {}; }
+
+		vec3_t point0 = center - N * dist;
+		vec3_t c0 = cross(point0 - p0, p1 - p0);
+		vec3_t c1 = cross(point0 - p1, p2 - p1);
+		vec3_t c2 = cross(point0 - p2, p0 - p2);
+		bool inside = dot(c0, N) <= 0 && dot(c1, N) <= 0 && dot(c2, N) <= 0;
+
+		if (inside) {
+			vec3_t intersection_vec = center - point0;
+			double len = magnitude(intersection_vec);
+			vec3_t penetration_normal = intersection_vec / len;
+			double penetration_depth = radius - len;
+			return std::make_optional(hit_data_t{penetration_normal, penetration_depth});
+		}
+
+		vec3_t point1 = closest_point_on_line_segment({p0, p1}, center);
+		vec3_t point2 = closest_point_on_line_segment({p1, p2}, center);
+		vec3_t point3 = closest_point_on_line_segment({p2, p0}, center);
+
+		vec3_t d1 = center - point1;
+		vec3_t d2 = center - point2;
+		vec3_t d3 = center - point3;
+
+		double distsq1 = dot(d1, d1);
+		double distsq2 = dot(d2, d2);
+		double distsq3 = dot(d3, d3);
+
+		double radiussq = radius * radius;
+
+		vec3_t intersection_vec, best_point;
+		if (distsq1 < radiussq) {
+			best_point = point1;
+			intersection_vec = d1;
+		}
+		else if (distsq2 < radiussq) {
+			best_point = point2;
+			intersection_vec = d2;
+		}
+		else if (distsq3 < radiussq) {
+			best_point = point3;
+			intersection_vec = d3;
+		}
+		else { return {}; }
+
+		double len = magnitude(intersection_vec);
+		vec3_t penetration_normal = intersection_vec / len;
+		double penetration_depth = radius - len;
+		return std::make_optional(hit_data_t{penetration_normal, penetration_depth});
+	}
+	vec3_t closest_point_on_triangle(const triangle_t& triangle, const vec3_t& point) {
+		vec3_t p0 = triangle.a, p1 = triangle.b, p2 = triangle.c; // triangle corners
+		vec3_t N = normalize(cross(p1 - p0, p2 - p0)); // plane normal
+		// Determine whether the point is inside all triangle edges: 
+		vec3_t c0 = cross(point - p0, p1 - p0);
+		vec3_t c1 = cross(point - p1, p2 - p1);
+		vec3_t c2 = cross(point - p2, p0 - p2);
+		bool inside = dot(c0, N) <= 0 && dot(c1, N) <= 0 && dot(c2, N) <= 0;
+		if (inside) {
+			return point;
+		} else {
+			// Edge 1:
+			vec3_t point1 = closest_point_on_line_segment(p0, p1, point);
+			vec3_t v1 = point - point1;
+			float distsq = dot(v1, v1);
+			float best_dist = distsq;
+			vec3_t reference_point = point1;
+			// Edge 2:
+			vec3_t point2 = closest_point_on_line_segment(p1, p2, point);
+			vec3_t v2 = point - point2;
+			distsq = dot(v2, v2);
+			if (distsq < best_dist) {
+				reference_point = point2;
+				best_dist = distsq;
+			}
+			// Edge 3:
+			vec3_t point3 = closest_point_on_line_segment(p2, p0, point);
+			vec3_t v3 = point - point3;
+			distsq = dot(v3, v3);
+			if (distsq < best_dist) {
+				reference_point = point3;
+				best_dist = distsq;
+			}
+			return reference_point;
+		}
+	}
+	inline std::optional<hit_data_t> col_capsule_n_triangle(const capsule_t& capsule, const rigid_body_t& rb,
+															const triangle_t& triangle) {
+		vec3_t tip = rb.pos + rb.rot * vec3_t(0, 0, capsule.half_height);
+		vec3_t base = rb.pos + rb.rot * vec3_t(0, 0, -capsule.half_height);
+		double radius = capsule.radius;
+		vec3_t p0 = triangle.a, p1 = triangle.b, p2 = triangle.c; // triangle corners
+		vec3_t N = normalize(cross(p1 - p0, p2 - p0)); // plane normal
+
+		vec3_t CapsuleNormal = normalize(tip - base);
+		
+		double t = dot(N, (p0 - base) / dot(N, CapsuleNormal));
+		vec3_t reference_point;
+		
+		if (dot(N, CapsuleNormal) == 0) {
+			// Triangle and capsule line are parallel
+			reference_point = p0;
+		} else {
+			vec3_t line_plane_intersection = base + CapsuleNormal * t;
+			reference_point = closest_point_on_triangle({p0, p1, p2}, line_plane_intersection);
+		}
+		// The center of the best sphere candidate:
+		vec3_t center = closest_point_on_line_segment(base, tip, reference_point);
+
+		return col_sphere_n_triangle(center, triangle, radius);
+	}
+	
+	inline std::vector<hit_data_t> col(
 		const rigid_body_t& rb,
-		const terrain_t& terrain)
-	{
-		static auto get_cells_fm_terrain_to = [](const terrain_t& in_terrain, const vec3_t& xy) { return &in_terrain.cells[xy.x + xy.y * (in_terrain.width - 1)]; };
+		const terrain_t& terrain) {
+		static auto get_cells_fm_terrain_to = [](const terrain_t& in_terrain, const vec3_t& xy) {
+			return &in_terrain.cells[xy.x + xy.y * (in_terrain.width - 1)];
+		};
 		auto get_cells_to = std::bind_front(get_cells_fm_terrain_to, terrain);
-		
-		std::vector<vec3_t> r;
-		
-		std::visit(loaded {
-			[&](const capsule_t& capsule) {
-				for (const auto cell : get_capsule_cells(capsule, rb.pos, rb.rot, terrain) | std::views::transform(get_cells_to)) {
-					for (auto& tri : cell->triangles) {
-						auto line = closest_line_segment({ rb.pos + rb.rot * vec3_t(0, 0, capsule.half_height + capsule.radius),
-														   rb.pos + rb.rot * vec3_t(0, 0, -capsule.half_height + capsule.radius) }, *tri);
-						if (distance(line.start, line.end) < capsule.radius) {
-							r.push_back(line.start);
-							r.push_back(line.end);
-						}
-					}
-				}
-			},
-			[](auto&&) {}
-		}, rb.target);
-		
+
+		std::vector<hit_data_t> r;
+
+		std::visit(loaded{
+			           [&](const capsule_t& capsule) {
+				           for (const auto cell : get_capsule_cells(capsule, rb.pos, rb.rot, terrain) | std::views::transform(get_cells_to)) {
+					           for (auto& tri : cell->triangles) {
+					           	   auto hit = col_capsule_n_triangle(capsule, rb, tri);
+					               if(hit) r.push_back(hit.value());
+					           }
+				           }
+			           },
+			           [](auto&&) {}
+		           }, rb.target);
+
 		return r;
 	}
 
-	template<double Dsec>
+	template <size_t TickRate>
 	class physics_world {
 		std::vector<rigid_body_t*> rigid_bodies;
 		std::vector<terrain_t*> terrains;
-		size_t start_timestamp;
+		std::chrono::time_point<std::chrono::steady_clock> physics_start_time;
 		size_t tick_count;
 		std::chrono::time_point<std::chrono::steady_clock> last_tick_time;
+
+	public:
+		std::function<void(std::string)> log;
+		const double dsec = TickRate / 1000.0;
+
+	private:
 		void simulate() {
-			for(const auto& rb : rigid_bodies) {
+			for (const auto& rb : rigid_bodies) {
 				//update rigid body
-				rb->pos = rb->vel * Dsec;
-				for(const auto& terrain : terrains) {
-					std::visit(loaded {
-						[&](const capsule_t& capsule) {
-							const auto hit_result = col(*rb, *terrain);
-							if(hit_result.size()) {
-								const auto hit_point = hit_result[0];
-								const auto on_line_point = hit_result[1];
-								const auto depth = capsule.radius - distance(hit_point, on_line_point);
-								const auto direction = normalize(on_line_point - hit_point);
-								rb->pos = rb->pos + direction * depth;
-							}
-						},
-						[](auto&&) {}
-						}, rb->target);
+				rb->pos += rb->vel * dsec;
+				for (const auto& terrain : terrains) {
+					std::visit(loaded{
+						           [&](capsule_t& capsule) {
+							           log("collision!");
+							           auto hit_result = col(*rb, *terrain);
+							           for (int i = 0; hit_result.size() && i < 10; ++i) {
+                                           const auto& [penetration_normal, penetration_depth] = hit_result.back();
+							           	   rb->pos -= penetration_normal * penetration_depth;
+										   hit_result = col(*rb, *terrain);
+							           }
+						           },
+						           [&](auto&&) {
+							           log(std::format("No collision!, Typename : {}",
+							                           typeid(decltype(rb->target)).name()));
+						           }
+					           }, rb->target);
 				}
 			}
 		}
+
 	public:
 		physics_world(): tick_count(0) {
-			start_timestamp = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+			physics_start_time = std::chrono::high_resolution_clock::now();
+			last_tick_time = std::chrono::high_resolution_clock::now();
 		}
 
-		void add_rigid_body(rigid_body_t* rigid) {
-			rigid_bodies.push_back(rigid);
+		void add_rigid_body(rigid_body_t* rigid) { rigid_bodies.push_back(rigid); }
+		void add_terrain(terrain_t* terrain) { terrains.push_back(terrain); }
+
+		double get_next_physics_time_tick() const { return (tick_count + 1) * dsec; }
+
+		double get_cur_time_sec() const {
+			return std::chrono::duration_cast<std::chrono::milliseconds>(
+				std::chrono::high_resolution_clock::now() - physics_start_time).count() / 1000.0;
 		}
-		void add_terrain(terrain_t* terrain) {
-			terrains.push_back(terrain);
-		}
-		
+
 		void simulate_physics() {
-			const auto start_time = std::chrono::high_resolution_clock::now();
-			const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(start_time - last_tick_time);
-			double sec = std::chrono::duration_cast<std::chrono::seconds>(ms).count();
-			while(sec >= Dsec) {
+			double sec = get_cur_time_sec() - tick_count * dsec;
+			while (sec >= dsec) {
 				simulate();
-				sec -= Dsec;
+				sec -= dsec;
 				tick_count++;
-				last_tick_time = start_time;
 			}
 		}
 	};
